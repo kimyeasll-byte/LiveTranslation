@@ -281,14 +281,14 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
   <!-- API selector -->
   <div class="api-label">번역 엔진</div>
   <div class="api-pills">
-    <button class="api-pill selected" id="apiFree" onclick="lobbySelectApi('mymemory')">✅ MyMemory <span style="font-size:11px;font-weight:400">(무료)</span></button>
+    <button class="api-pill" id="apiFree" onclick="lobbySelectApi('mymemory')">✅ MyMemory <span style="font-size:11px;font-weight:400">(무료)</span></button>
     <button class="api-pill" id="apiGoogle" onclick="lobbySelectApi('google')">Google Translate</button>
-    <button class="api-pill" id="apiDeepl" onclick="lobbySelectApi('deepl')">DeepL</button>
+    <button class="api-pill selected" id="apiDeepl" onclick="lobbySelectApi('deepl')">DeepL</button>
   </div>
-  <div id="apiKeyArea" style="display:none">
-    <div id="apiKeyHint" class="field-label" style="margin-bottom:6px"></div>
+  <div id="apiKeyArea" style="display:block">
+    <div id="apiKeyHint" class="field-label" style="margin-bottom:6px">DeepL API 키 (베트남어 VI 미지원)</div>
     <div class="api-key-row">
-      <input type="password" class="api-key-input" id="apiKeyLobby" placeholder="API 키를 붙여넣으세요">
+      <input type="password" class="api-key-input" id="apiKeyLobby" placeholder="API 키를 붙여넣으세요" value="464d0c76-92f6-49f0-99cf-e46923488379:fx">
       <select id="deeplPlanLobby" style="display:none;padding:9px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--bg);outline:none">
         <option value="free">Free tier</option>
         <option value="pro">Pro tier</option>
@@ -482,8 +482,8 @@ let myName      = '나';
 let theirName   = '상대';
 let myLang      = 'ko';
 let theirLang   = 'en';
-let provider    = 'mymemory';
-let apiKey      = '';
+let provider    = 'deepl';
+let apiKey      = '464d0c76-92f6-49f0-99cf-e46923488379:fx';
 let deeplPlan   = 'free';
 let sttEngine   = 'browser'; // 'browser' | 'groq'
 let groqApiKey  = '';
