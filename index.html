@@ -493,6 +493,7 @@ let mediaRecorder = null, audioChunks = [];
 let shareLink   = '';
 let peerCode    = '';
 let transcripts = [];   // { id, speaker:'me'|'them', original, origLang, translated, transLang, timestamp, source }
+let currentSessionId = null;
 
 /* ═══════ LOBBY LOGIC ═══════ */
 function switchMode(m) {
@@ -657,6 +658,9 @@ function destroyPeer() {
 
 /* ═══════ ENTER MAIN ═══════ */
 function enterMain() {
+  const d = new Date();
+  currentSessionId = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}${d.getHours().toString().padStart(2,'0')}${d.getMinutes().toString().padStart(2,'0')}`;
+
   showScreen('main');
   updateMainSelects();
   updateMainLabels();
@@ -1056,6 +1060,7 @@ function renderMinutes(){
 
 /* ═══════ MODALS & LOCAL HISTORY ═══════ */
 function addTranscript(t) {
+  t.sessionId = currentSessionId;
   transcripts.push(t);
   try {
     let hist = JSON.parse(localStorage.getItem('liveTransHistory') || '[]');
@@ -1134,20 +1139,34 @@ function openAdmin() {
     return;
   }
   
-  const rows = hist.map((t, index) => {
-    return `<div onclick="showAdminDetail(${index})" style="padding:12px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.2s" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+  const sessions = {};
+  hist.forEach(t => {
+    const sid = t.sessionId || 'legacy';
+    if(!sessions[sid]) sessions[sid] = { id: sid, startTime: t.timestamp, items: [] };
+    sessions[sid].items.push(t);
+  });
+  const sessionList = Object.values(sessions).sort((a,b) => new Date(b.startTime) - new Date(a.startTime));
+
+  const rows = sessionList.map(s => {
+    const d = new Date(s.startTime);
+    let title = s.id;
+    if(s.id === 'legacy') title = '이전 기록';
+    else if(s.id.length >= 12) {
+      title = `${s.id.substring(0,4)}/${s.id.substring(4,6)}/${s.id.substring(6,8)} ${s.id.substring(8,10)}:${s.id.substring(10,12)} 시작 세션`;
+    }
+    return `<div onclick="showAdminDetail('${s.id}')" style="padding:12px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.2s" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
       <div>
-        <div style="font-weight:600;font-size:13px;margin-bottom:4px">${new Date(t.timestamp).toLocaleString('ko-KR')}</div>
-        <div style="font-size:12px;color:var(--muted)">화자: ${esc(t.speaker==='me'?myName:theirName)}</div>
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px">${title} (${s.id})</div>
+        <div style="font-size:12px;color:var(--muted)">통번역 ${s.items.length}건</div>
       </div>
-      <div style="font-size:12px;color:var(--primary);font-weight:bold;background:#EEF2FF;padding:4px 8px;border-radius:12px">1건 보기 ></div>
+      <div style="font-size:12px;color:var(--primary);font-weight:bold;background:#EEF2FF;padding:4px 8px;border-radius:12px">내역 보기 ></div>
     </div>`;
   }).join('');
   
   const html = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <p style="margin:0;font-weight:600;color:var(--primary)">이 기기에서 진행된 전체 대화 내역입니다.</p>
-      <button onclick="downloadAdminCSV()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;box-shadow:var(--sh);">CSV 다운로드</button>
+      <p style="margin:0;font-weight:600;color:var(--primary)">이 기기에서 진행된 전체 대화 세션 목록입니다.</p>
+      <button onclick="downloadAdminCSV()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;box-shadow:var(--sh);">전체 CSV 다운로드</button>
     </div>
     <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#fff">
       ${rows}
@@ -1159,32 +1178,38 @@ function openAdmin() {
   openModal('⚙️ 관리자 콘솔', html);
 }
 
-window.showAdminDetail = function(index) {
+window.showAdminDetail = function(sid) {
   let hist = [];
   try { hist = JSON.parse(localStorage.getItem('liveTransHistory') || '[]'); } catch(e){}
-  const t = hist[index];
-  if(!t) return;
+  const items = hist.filter(t => (t.sessionId || 'legacy') === sid);
+  if(!items.length) return;
+
+  const detailRows = items.map(t => {
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="margin-bottom:8px;font-size:12px;color:var(--muted)">
+        <strong>${new Date(t.timestamp).toLocaleTimeString('ko-KR')}</strong> | 화자: ${esc(t.speaker==='me'?myName:theirName)}
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:11px;color:var(--primary);font-weight:bold;margin-bottom:2px">원본 (${esc(t.origLang)})</div>
+        <div style="padding:8px;background:#f9fafb;border-radius:6px;border:1px solid var(--border);font-size:13px">${esc(t.original)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#059669;font-weight:bold;margin-bottom:2px">번역 (${esc(t.transLang)})</div>
+        <div style="padding:8px;background:#f9fafb;border-radius:6px;border:1px solid var(--border);font-size:13px">${esc(t.translated)}</div>
+      </div>
+    </div>`;
+  }).join('');
 
   const html = `
-    <div style="padding:10px 0;">
-      <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">
-        <strong>시간:</strong> ${new Date(t.timestamp).toLocaleString('ko-KR')}<br>
-        <strong>화자:</strong> ${esc(t.speaker==='me'?myName:theirName)}
-      </div>
-      <div style="margin-bottom:16px">
-        <div style="font-size:12px;color:var(--primary);font-weight:bold;margin-bottom:4px">원본 (${esc(t.origLang)})</div>
-        <div style="padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--border);font-size:14px;line-height:1.5">${esc(t.original)}</div>
-      </div>
-      <div style="margin-bottom:16px">
-        <div style="font-size:12px;color:#059669;font-weight:bold;margin-bottom:4px">번역 (${esc(t.transLang)})</div>
-        <div style="padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--border);font-size:14px;line-height:1.5">${esc(t.translated)}</div>
-      </div>
-      <div style="text-align:center;margin-top:20px">
-        <button onclick="openAdmin()" style="padding:8px 24px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold">목록으로 돌아가기</button>
-      </div>
+    <div style="margin-bottom:12px;font-weight:bold;color:var(--primary)">세션 [${sid}] 세부내역</div>
+    <div style="max-height:50vh;overflow-y:auto;padding-right:4px;">
+      ${detailRows}
+    </div>
+    <div style="text-align:center;margin-top:20px">
+      <button onclick="openAdmin()" style="padding:8px 24px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold">세션 목록으로 돌아가기</button>
     </div>
   `;
-  openModal('🔍 세부 내역', html);
+  openModal('🔍 세션 세부 내역', html);
 };
 
 function downloadAdminCSV() {
@@ -1192,12 +1217,15 @@ function downloadAdminCSV() {
   try { hist = JSON.parse(localStorage.getItem('liveTransHistory') || '[]'); } catch(e){}
   if(!hist.length) return;
   
-  let csv = '\\ufeff시간,화자,원어,번역어,원본,번역\\n';
+  let csv = '세션ID,시간,화자,원어,번역어,원본,번역\n';
   hist.forEach(t => {
-    csv += `"${new Date(t.timestamp).toLocaleString('ko-KR')}","${esc(t.speaker==='me'?myName:theirName)}","${t.origLang}","${t.transLang}","${String(t.original).replace(/"/g,'""')}","${String(t.translated).replace(/"/g,'""')}"\n`;
+    const sid = t.sessionId || 'legacy';
+    csv += `"${sid}","${new Date(t.timestamp).toLocaleString('ko-KR')}","${esc(t.speaker==='me'?myName:theirName)}","${t.origLang}","${t.transLang}","${String(t.original).replace(/"/g,'""')}","${String(t.translated).replace(/"/g,'""')}"\n`;
   });
   
-  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
+  // Use Uint8Array for true BOM to ensure Excel opens it correctly
+  const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+  const blob = new Blob([bom, csv], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
