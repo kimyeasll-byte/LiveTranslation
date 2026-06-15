@@ -236,7 +236,7 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
     <div style="display:flex;gap:8px;margin-top:12px">
       <button onclick="openManual()" style="font-size:12px;color:#4F46E5;border:none;background:#EEF2FF;padding:6px 14px;border-radius:20px;font-weight:600;cursor:pointer;font-family:inherit">📖 매뉴얼</button>
       <button onclick="openPatchNotes()" style="font-size:12px;color:#059669;border:none;background:#D1FAE5;padding:6px 14px;border-radius:20px;font-weight:600;cursor:pointer;font-family:inherit">📢 패치노트</button>
-      <button onclick="openAdmin()" style="font-size:12px;color:#D97706;border:none;background:#FEF3C7;padding:6px 14px;border-radius:20px;font-weight:600;cursor:pointer;font-family:inherit">⚙️ 관리자</button>
+      <button onclick="openAdminLogin()" style="font-size:12px;color:#D97706;border:none;background:#FEF3C7;padding:6px 14px;border-radius:20px;font-weight:600;cursor:pointer;font-family:inherit">⚙️ 관리자</button>
     </div>
   </div>
 
@@ -1099,6 +1099,30 @@ function openPatchNotes() {
 - **UI 개편**: 대화창이 메신저(좌/우 말풍선) 형태로 변경되어 가독성이 향상되었습니다.
   `;
   openModal('📢 패치노트', marked.parse(notes));
+}
+
+function openAdminLogin() {
+  const html = `
+    <div style="padding:20px 0;text-align:center">
+      <p style="margin-bottom:16px;color:var(--muted);font-size:14px">관리자 권한이 필요합니다.</p>
+      <input type="text" id="adminId" placeholder="아이디" style="width:100%;max-width:240px;padding:10px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px">
+      <input type="password" id="adminPw" placeholder="비밀번호" style="width:100%;max-width:240px;padding:10px;margin-bottom:16px;border:1px solid var(--border);border-radius:6px" onkeydown="if(event.key==='Enter')verifyAdminLogin()">
+      <button onclick="verifyAdminLogin()" style="width:100%;max-width:240px;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-weight:bold;cursor:pointer">로그인</button>
+      <p id="adminError" style="color:var(--red);font-size:12px;margin-top:12px;display:none">아이디 또는 비밀번호가 틀렸습니다.</p>
+    </div>
+  `;
+  openModal('🔐 관리자 로그인', html);
+  setTimeout(() => document.getElementById('adminId').focus(), 100);
+}
+
+function verifyAdminLogin() {
+  const id = document.getElementById('adminId').value;
+  const pw = document.getElementById('adminPw').value;
+  if (id === 'admin' && pw === 'power0700!!') {
+    openAdmin();
+  } else {
+    document.getElementById('adminError').style.display = 'block';
+  }
 }
 
 function openAdmin() {
