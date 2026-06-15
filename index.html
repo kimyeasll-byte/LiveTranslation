@@ -473,6 +473,7 @@ let theirLang   = 'en';
 let provider    = 'deepl';
 let apiKey      = localStorage.getItem('apiKey') || '464d0c76-92f6-49f0-99cf-e46923488379:fx';
 let deeplPlan   = localStorage.getItem('deeplPlan') || 'free';
+let deeplProxyUrl = localStorage.getItem('deeplProxyUrl') || '';
 let sttEngine   = 'browser'; // 'browser' | 'groq'
 let groqApiKey  = localStorage.getItem('groqApiKey') || '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';
 let peer        = null, conn = null, isHost = false;
@@ -988,7 +989,13 @@ async function translateDeepL(text,from,to){
   if(!fc||!tc) throw new Error('DeepL 미지원 언어 (VI 제외)');
   const base=deeplPlan==='free'?'https://api-free.deepl.com':'https://api.deepl.com';
   
-  const res=await fetch(`${base}/v2/translate`,{
+  let targetUrl = `${base}/v2/translate`;
+  if (deeplProxyUrl) {
+    if (deeplProxyUrl.includes('?url=')) targetUrl = deeplProxyUrl + encodeURIComponent(targetUrl);
+    else targetUrl = deeplProxyUrl + targetUrl;
+  }
+  
+  const res=await fetch(targetUrl,{
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':`DeepL-Auth-Key ${apiKey}`},
     body:new URLSearchParams({text,source_lang:fc,target_lang:tc})
@@ -1132,6 +1139,11 @@ function openAdmin() {
           </select>
         </div>
         <div style="grid-column:1 / -1">
+          <label style="font-size:11px;color:var(--muted);font-weight:bold">DeepL 커스텀 프록시 주소 (선택)</label>
+          <input type="text" id="adminDeeplProxy" value="${esc(deeplProxyUrl)}" placeholder="예: https://my-proxy.workers.dev/?" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+          <div style="font-size:10px;color:var(--muted);margin-top:4px;">DeepL은 브라우저 직접 호출(CORS)을 차단하므로, 모바일에서 사용하려면 우회 서버(Proxy)를 구성해 입력해야 합니다.</div>
+        </div>
+        <div style="grid-column:1 / -1">
           <label style="font-size:11px;color:var(--muted);font-weight:bold">Groq STT API 키</label>
           <input type="text" id="adminGroqKey" value="${esc(groqApiKey)}" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
         </div>
@@ -1177,9 +1189,11 @@ function openAdmin() {
 window.saveAdminKeys = function() {
   apiKey = document.getElementById('adminTransKey').value.trim();
   deeplPlan = document.getElementById('adminDeeplPlan').value;
+  deeplProxyUrl = document.getElementById('adminDeeplProxy').value.trim();
   groqApiKey = document.getElementById('adminGroqKey').value.trim();
   localStorage.setItem('apiKey', apiKey);
   localStorage.setItem('deeplPlan', deeplPlan);
+  localStorage.setItem('deeplProxyUrl', deeplProxyUrl);
   localStorage.setItem('groqApiKey', groqApiKey);
   showToast('API 키 설정이 저장되었습니다.');
 };
