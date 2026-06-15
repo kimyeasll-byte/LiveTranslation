@@ -987,7 +987,12 @@ async function translateDeepL(text,from,to){
   const fc=LANG[from]?.deepl, tc=LANG[to]?.deepl;
   if(!fc||!tc) throw new Error('DeepL 미지원 언어 (VI 제외)');
   const base=deeplPlan==='free'?'https://api-free.deepl.com':'https://api.deepl.com';
-  const res=await fetch(`${base}/v2/translate`,{
+  
+  // 모바일 등 브라우저 환경에서 DeepL CORS 에러(Failed to fetch) 방지를 위해 프록시 사용
+  const proxy = 'https://corsproxy.io/?';
+  const targetUrl = `${base}/v2/translate`;
+  
+  const res=await fetch(proxy + encodeURIComponent(targetUrl),{
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded','Authorization':`DeepL-Auth-Key ${apiKey}`},
     body:new URLSearchParams({text,source_lang:fc,target_lang:tc})
