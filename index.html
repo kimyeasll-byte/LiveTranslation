@@ -862,7 +862,7 @@ async function startGroqRecording(){
   let isSpeakingHasOccurred = false;
   let silenceStart = 0;
   const SILENCE_THRESHOLD = 5; 
-  const SILENCE_DURATION = 1500; 
+  const SILENCE_DURATION = 1000; 
 
   function createRecorder() {
     if(!isRecording) return;
