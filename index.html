@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LiveTrans — 실시간 동시통역</title>
 <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 :root {
   --primary:#4F46E5; --primary-light:#EEF2FF;
@@ -200,17 +201,43 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
   .panels{grid-template-columns:1fr}
   main{padding:9px}
 }
+/* Modal */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px);padding:20px}
+.modal-overlay.open{display:flex}
+.modal-content{background:#fff;width:100%;max-width:640px;max-height:85vh;border-radius:16px;box-shadow:var(--sh-lg);display:flex;flex-direction:column;overflow:hidden}
+.modal-hdr{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg)}
+.modal-title{font-size:16px;font-weight:700;color:var(--text)}
+.modal-close{background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1}
+.modal-body{padding:20px;overflow-y:auto;font-size:14px;line-height:1.6;color:var(--text)}
+.modal-body h1,.modal-body h2,.modal-body h3{margin:16px 0 8px;color:var(--primary)}
+.modal-body ul{padding-left:20px;margin-bottom:12px}
+.modal-body p{margin-bottom:12px}
+.modal-body table{width:100%;border-collapse:collapse;margin-bottom:16px}
+.modal-body th,.modal-body td{border:1px solid var(--border);padding:8px;text-align:left}
+.modal-body th{background:var(--bg)}
 </style>
 </head>
 <body>
-
-<!-- ══════════════════════════════ LOBBY ══════════════════════════════ -->
+<!-- ══════════════════════════════ MODAL ══════════════════════════════ -->
+<div id="globalModal" class="modal-overlay" onclick="closeModal(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+      <div class="modal-title" id="modalTitle">매뉴얼</div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div><!-- ══════════════════════════════ LOBBY ══════════════════════════════ -->
 <div id="screenLobby">
 <div class="screen-center">
 <div class="card">
   <div class="logo" style="display:flex; flex-direction:column; align-items:center;">
     <div style="display:flex; align-items:center; gap:8px;"><div class="logo-icon">🎙</div>LiveTrans</div>
-    <a href="https://github.com/kimyeasll-byte/LiveTranslation/blob/main/user_manual.md" target="_blank" style="margin-top:12px;font-size:13px;color:#4F46E5;text-decoration:none;font-weight:600;background:#EEF2FF;padding:6px 16px;border-radius:20px;">📖 사용자 매뉴얼 보기</a>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="openManual()" style="font-size:12px;color:#4F46E5;border:none;background:#EEF2FF;padding:6px 14px;border-radius:20px;font-weight:600;cursor:pointer;font-family:inherit">📖 매뉴얼</button>
+      <button onclick="openPatchNotes()" style="font-size:12px;color:#059669;border:none;background:#D1FAE5;padding:6px 14px;border-radius:20px;font-weight:600;cursor:pointer;font-family:inherit">📢 패치노트</button>
+      <button onclick="openAdmin()" style="font-size:12px;color:#D97706;border:none;background:#FEF3C7;padding:6px 14px;border-radius:20px;font-weight:600;cursor:pointer;font-family:inherit">⚙️ 관리자</button>
+    </div>
   </div>
 
   <!-- name -->
@@ -594,18 +621,15 @@ function handleRemoteData(data) {
     updateMainSelects();
     updateMainLabels();
     return;
-  }
   if (data.type==='final') {
     // data.translated is in MY language
     document.getElementById('theirPanel').innerHTML = `<span class="final">${esc(data.translated)}</span>`;
     document.getElementById('panelTheirs').classList.add('active-them');
-    transcripts.push({
-      id:Date.now(), speaker:'them',
-      original:data.original, origLang:data.origLang,
-      translated:data.translated, transLang:data.transLang,
-      timestamp:new Date(data.ts), source:data.source||'speech'
+    addTranscript({
+      id:data.ts,speaker:'them',original:data.original,origLang:data.origLang,
+      translated:data.translated,transLang:data.transLang,
+      timestamp:new Date(data.ts),source:data.source||'speech'
     });
-    renderMinutes();
   } else if (data.type==='speaking') {
     if (data.active) {
       document.getElementById('theirPanel').innerHTML = `<span class="interim">💬 ${esc(theirName)}이(가) 말하는 중…</span>`;
@@ -748,8 +772,7 @@ function initSR() {
 
       if(mode==='p2p') sendToPeer({type:'final',original:final.trim(),translated,origLang:myLang,transLang:theirLang,ts:Date.now(),source:'speech'});
 
-      transcripts.push({id:Date.now(),speaker:'me',original:final.trim(),origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'speech'});
-      renderMinutes();
+      addTranscript({id:Date.now(),speaker:'me',original:final.trim(),origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'speech'});
       document.getElementById('myPanel').innerHTML=`<span class="final">${esc(final.trim())}</span>`;
       document.getElementById('retransBtn').style.display='none';
     }
@@ -910,8 +933,7 @@ async function processGroqChunk(blob) {
     document.getElementById('theirPanel').innerHTML=`<span class="final">${esc(translated)}</span>`;
     document.getElementById('panelTheirs').classList.add('active-them');
     if(mode==='p2p') sendToPeer({type:'final',original:text,translated,origLang:myLang,transLang:theirLang,ts:Date.now(),source:'speech'});
-    transcripts.push({id:Date.now(),speaker:'me',original:text,origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'speech'});
-    renderMinutes();
+    addTranscript({id:Date.now(),speaker:'me',original:text,origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'speech'});
   }catch(e){ showToast('Groq 처리 오류: '+e.message,'error'); }
 }
 
@@ -955,8 +977,7 @@ async function submitText(){
 
   if(mode==='p2p') sendToPeer({type:'final',original:text,translated,origLang:myLang,transLang:theirLang,ts:Date.now(),source:'text'});
 
-  transcripts.push({id:Date.now(),speaker:'me',original:text,origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'text'});
-  renderMinutes();
+  addTranscript({id:Date.now(),speaker:'me',original:text,origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'text'});
   inp.value=''; btn.disabled=false; btn.textContent='전송 →'; inp.focus();
   document.getElementById('retransBtn').style.display='none';
 }
@@ -1030,6 +1051,116 @@ function renderMinutes(){
     </div>`;
   }).join('');
   body.scrollTop=body.scrollHeight;
+}
+
+/* ═══════ MODALS & LOCAL HISTORY ═══════ */
+function addTranscript(t) {
+  transcripts.push(t);
+  try {
+    let hist = JSON.parse(localStorage.getItem('liveTransHistory') || '[]');
+    hist.push(t);
+    localStorage.setItem('liveTransHistory', JSON.stringify(hist));
+  } catch(e){}
+  renderMinutes();
+}
+
+function openModal(title, htmlContent) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = htmlContent;
+  document.getElementById('globalModal').classList.add('open');
+}
+function closeModal(e) {
+  if(e && e.target !== document.getElementById('globalModal') && e.target.className !== 'modal-close') return;
+  document.getElementById('globalModal').classList.remove('open');
+}
+
+async function openManual() {
+  document.getElementById('modalTitle').textContent = '📖 사용자 매뉴얼';
+  document.getElementById('modalBody').innerHTML = '<div class="spinner" style="border-top-color:var(--primary);margin:0 auto;display:block"></div>';
+  document.getElementById('globalModal').classList.add('open');
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/kimyeasll-byte/LiveTranslation/main/user_manual.md');
+    const text = await res.text();
+    document.getElementById('modalBody').innerHTML = marked.parse(text);
+  } catch(e) {
+    document.getElementById('modalBody').innerHTML = '매뉴얼을 불러올 수 없습니다.';
+  }
+}
+
+function openPatchNotes() {
+  const notes = `
+# 📢 패치노트
+
+## 2026.06.15 업데이트
+- **실시간 연속 STT**: 마이크를 한 번만 켜두면, 말을 멈출 때마다 자동으로 인식하여 번역합니다.
+- **AI 회의 요약**: 대화 기록 내보내기 시, AI가 3~4줄 요약과 Action Item을 추출해 줍니다.
+- **관리자 콘솔**: 그동안 대화했던 모든 내역을 내 기기에 자동 저장하고, 로비에서 언제든 모아서 다운로드할 수 있습니다.
+- **UI 개편**: 대화창이 메신저(좌/우 말풍선) 형태로 변경되어 가독성이 향상되었습니다.
+  `;
+  openModal('📢 패치노트', marked.parse(notes));
+}
+
+function openAdmin() {
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('liveTransHistory') || '[]'); } catch(e){}
+  
+  if(hist.length === 0) {
+    openModal('⚙️ 관리자 콘솔', '<p style="text-align:center;color:var(--muted);padding:40px 0">저장된 대화 기록이 없습니다.</p>');
+    return;
+  }
+  
+  const rows = hist.map(t => {
+    return `<tr>
+      <td>${new Date(t.timestamp).toLocaleString('ko-KR')}</td>
+      <td>${esc(t.speaker==='me'?myName:theirName)}</td>
+      <td>${esc(t.original)}</td>
+      <td>${esc(t.translated)}</td>
+    </tr>`;
+  }).join('');
+  
+  const html = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <p style="margin:0;font-weight:600;color:var(--primary)">이 기기에서 진행된 전체 대화 내역입니다.</p>
+      <button onclick="downloadAdminCSV()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;box-shadow:var(--sh);">CSV 다운로드</button>
+    </div>
+    <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;background:#fff">
+        <thead style="position:sticky;top:0;background:var(--bg);box-shadow:0 1px 0 var(--border);">
+          <tr><th style="padding:10px;color:var(--muted)">시간</th><th style="padding:10px;color:var(--muted)">화자</th><th style="padding:10px;color:var(--muted)">원본</th><th style="padding:10px;color:var(--muted)">번역</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;text-align:right">
+      <button onclick="clearAdminHistory()" style="padding:6px 12px;background:transparent;color:var(--red);border:1px solid var(--red);border-radius:6px;cursor:pointer;font-size:12px;">전체 기록 삭제</button>
+    </div>
+  `;
+  openModal('⚙️ 관리자 콘솔', html);
+}
+
+function downloadAdminCSV() {
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('liveTransHistory') || '[]'); } catch(e){}
+  if(!hist.length) return;
+  
+  let csv = '\\ufeff시간,화자,원어,번역어,원본,번역\\n';
+  hist.forEach(t => {
+    csv += \`"\${new Date(t.timestamp).toLocaleString('ko-KR')}","\${esc(t.speaker==='me'?myName:theirName)}","\${t.origLang}","\${t.transLang}","\${String(t.original).replace(/"/g,'""')}","\${String(t.translated).replace(/"/g,'""')}"\\n\`;
+  });
+  
+  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = \`LiveTrans_History_\${new Date().toISOString().slice(0,10)}.csv\`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function clearAdminHistory() {
+  if(!confirm('이 기기에 저장된 모든 대화 기록을 영구적으로 삭제하시겠습니까?')) return;
+  localStorage.removeItem('liveTransHistory');
+  closeModal();
+  showToast('🗑️ 모든 기록이 삭제되었습니다.');
 }
 
 /* ═══════ HELPERS ═══════ */
