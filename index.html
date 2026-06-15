@@ -1134,13 +1134,14 @@ function openAdmin() {
     return;
   }
   
-  const rows = hist.map(t => {
-    return `<tr>
-      <td>${new Date(t.timestamp).toLocaleString('ko-KR')}</td>
-      <td>${esc(t.speaker==='me'?myName:theirName)}</td>
-      <td>${esc(t.original)}</td>
-      <td>${esc(t.translated)}</td>
-    </tr>`;
+  const rows = hist.map((t, index) => {
+    return `<div onclick="showAdminDetail(${index})" style="padding:12px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background 0.2s" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+      <div>
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px">${new Date(t.timestamp).toLocaleString('ko-KR')}</div>
+        <div style="font-size:12px;color:var(--muted)">화자: ${esc(t.speaker==='me'?myName:theirName)}</div>
+      </div>
+      <div style="font-size:12px;color:var(--primary);font-weight:bold;background:#EEF2FF;padding:4px 8px;border-radius:12px">1건 보기 ></div>
+    </div>`;
   }).join('');
   
   const html = `
@@ -1148,13 +1149,8 @@ function openAdmin() {
       <p style="margin:0;font-weight:600;color:var(--primary)">이 기기에서 진행된 전체 대화 내역입니다.</p>
       <button onclick="downloadAdminCSV()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;box-shadow:var(--sh);">CSV 다운로드</button>
     </div>
-    <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;background:#fff">
-        <thead style="position:sticky;top:0;background:var(--bg);box-shadow:0 1px 0 var(--border);">
-          <tr><th style="padding:10px;color:var(--muted)">시간</th><th style="padding:10px;color:var(--muted)">화자</th><th style="padding:10px;color:var(--muted)">원본</th><th style="padding:10px;color:var(--muted)">번역</th></tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+    <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#fff">
+      ${rows}
     </div>
     <div style="margin-top:16px;text-align:right">
       <button onclick="clearAdminHistory()" style="padding:6px 12px;background:transparent;color:var(--red);border:1px solid var(--red);border-radius:6px;cursor:pointer;font-size:12px;">전체 기록 삭제</button>
@@ -1162,6 +1158,34 @@ function openAdmin() {
   `;
   openModal('⚙️ 관리자 콘솔', html);
 }
+
+window.showAdminDetail = function(index) {
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('liveTransHistory') || '[]'); } catch(e){}
+  const t = hist[index];
+  if(!t) return;
+
+  const html = `
+    <div style="padding:10px 0;">
+      <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">
+        <strong>시간:</strong> ${new Date(t.timestamp).toLocaleString('ko-KR')}<br>
+        <strong>화자:</strong> ${esc(t.speaker==='me'?myName:theirName)}
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--primary);font-weight:bold;margin-bottom:4px">원본 (${esc(t.origLang)})</div>
+        <div style="padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--border);font-size:14px;line-height:1.5">${esc(t.original)}</div>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:#059669;font-weight:bold;margin-bottom:4px">번역 (${esc(t.transLang)})</div>
+        <div style="padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--border);font-size:14px;line-height:1.5">${esc(t.translated)}</div>
+      </div>
+      <div style="text-align:center;margin-top:20px">
+        <button onclick="openAdmin()" style="padding:8px 24px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold">목록으로 돌아가기</button>
+      </div>
+    </div>
+  `;
+  openModal('🔍 세부 내역', html);
+};
 
 function downloadAdminCSV() {
   let hist = [];
