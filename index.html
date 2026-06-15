@@ -151,22 +151,21 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
 .min-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px}
 .entry-ct{font-size:11px;color:var(--muted);font-weight:400;background:var(--border);padding:2px 8px;border-radius:10px}
 .min-acts{display:flex;gap:6px}
-.min-body{max-height:360px;overflow-y:auto}
-.m-entry{padding:11px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:72px 1fr 1fr;gap:13px;align-items:start;transition:background .1s}
-.m-entry:hover{background:var(--bg)}
-.m-entry:last-child{border-bottom:none}
-.m-entry.e-me{border-left:3px solid var(--me)}
-.m-entry.e-them{border-left:3px solid var(--them)}
-.e-meta{display:flex;flex-direction:column;align-items:center;gap:4px}
+.min-body{max-height:360px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--bg)}
+.m-entry{display:flex;align-items:flex-end;gap:8px;width:100%}
+.m-entry.e-me{flex-direction:row-reverse}
+.e-meta{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0}
 .spk-badge{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
 .spk-badge.me{background:var(--me)}.spk-badge.them{background:var(--them)}
 .e-name{font-size:10px;font-weight:600;color:var(--muted);text-align:center;max-width:62px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.e-time{font-size:10px;color:#94A3B8}
-.e-col-lbl{font-size:10px;font-weight:700;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}
-.e-orig{font-size:14px;line-height:1.5;color:var(--text)}
-.e-trans{font-size:14px;line-height:1.5;color:var(--muted)}
-.e-trans.translating{color:#CBD5E1;font-style:italic;font-size:13px}
-.min-empty{padding:44px 20px;text-align:center;color:#CBD5E1}
+.e-time{font-size:10px;color:#94A3B8;margin-top:2px}
+.msg-bubble{max-width:75%;padding:10px 14px;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:6px}
+.e-me .msg-bubble{background:var(--primary);color:#fff;border-bottom-right-radius:4px}
+.e-them .msg-bubble{background:#fff;color:var(--text);border-bottom-left-radius:4px;border:1px solid var(--border)}
+.msg-orig{font-size:14px;line-height:1.4}
+.msg-trans{font-size:13px;line-height:1.4;opacity:0.9;padding-top:6px;border-top:1px solid rgba(255,255,255,0.2)}
+.e-them .msg-trans{border-top:1px solid var(--border);color:var(--muted)}
+.min-empty{padding:44px 20px;text-align:center;color:#CBD5E1;width:100%}
 .empty-icon{font-size:34px;margin-bottom:9px}
 
 /* dropdown */
@@ -197,8 +196,6 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
 }
 @media(max-width:680px){
   .panels{grid-template-columns:1fr}
-  .m-entry{grid-template-columns:56px 1fr}
-  .m-entry>div:last-child{display:none}
   main{padding:9px}
 }
 </style>
@@ -536,12 +533,9 @@ function createRoom() {
     peerCode  = id;
     const base = location.origin + location.pathname;
     shareLink  = `${base}?join=${id}&sl=${myLang}&tl=${theirLang}`;
-    document.getElementById('shareLinkBox').textContent  = shareLink;
-    document.getElementById('peerCodeDisplay').textContent = id;
-    setWaitLabels();
-    document.getElementById('waitHost').style.display='';
-    document.getElementById('waitGuest').style.display='none';
-    showScreen('waiting');
+    enterMain();
+    setConnStatus('connecting');
+    document.getElementById('connLabel').innerHTML = `대기 중 <button onclick="copyLink()" style="margin-left:6px;padding:3px 8px;border:none;border-radius:4px;background:var(--primary);color:#fff;font-size:11px;font-weight:600;cursor:pointer">링크 복사</button> <button onclick="copyCode()" style="margin-left:4px;padding:3px 8px;border:none;border-radius:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);font-size:11px;font-weight:600;cursor:pointer">코드 복사</button>`;
     peer.on('connection', c=>{ conn=c; setupConn(); });
   });
   peer.on('error', e=>{ showToast(`PeerJS 오류: ${e.type}`,'error'); showScreen('lobby'); });
@@ -574,7 +568,12 @@ function setupConn() {
   conn.on('open', ()=>{
     // send handshake
     conn.send({ type:'handshake', name:myName, myLang, theirLang });
-    enterMain();
+    if (!isHost) {
+      enterMain();
+    } else {
+      setConnStatus('connected');
+      showToast('✅ 연결됐습니다! 대화를 시작하세요','success');
+    }
   });
   conn.on('data', handleRemoteData);
   conn.on('close', ()=>{ setConnStatus('disconnected'); showToast('⚠️ 연결이 끊겼습니다','error'); });
@@ -950,13 +949,9 @@ function renderMinutes(){
         <div class="e-time">${fmtT(t.timestamp)}</div>
         ${t.source==='text'?'<div style="font-size:10px;color:#CBD5E1">✏️</div>':''}
       </div>
-      <div>
-        <div class="e-col-lbl">${sl.flag} 원본</div>
-        <div class="e-orig">${esc(t.original)}</div>
-      </div>
-      <div>
-        <div class="e-col-lbl">${dl.flag} 번역</div>
-        <div class="e-trans">${esc(t.translated)}</div>
+      <div class="msg-bubble">
+        <div class="msg-orig">${sl.flag} ${esc(t.original)}</div>
+        <div class="msg-trans">${dl.flag} ${esc(t.translated)}</div>
       </div>
     </div>`;
   }).join('');
