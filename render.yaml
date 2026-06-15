@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: livetrans
+    env: static
+    buildCommand: ""
+    staticPublishPath: .
