@@ -193,7 +193,9 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
   .min-body{max-height:none!important;overflow:visible!important}
   body,main{background:#fff;padding:0}
   .m-entry{break-inside:avoid}
+  #printSummary{display:block!important;margin-bottom:24px;padding:16px;border:1px solid #ddd;border-radius:8px;}
 }
+#printSummary{display:none;}
 @media(max-width:680px){
   .panels{grid-template-columns:1fr}
   main{padding:9px}
@@ -785,67 +787,136 @@ function stopRecording(){
 }
 
 /* ═══════ GROQ WHISPER STT ═══════ */
+let audioCtx = null;
+let analyser = null;
+let vadInterval = null;
+let groqRecognition = null;
+
 async function startGroqRecording(){
   if(!groqApiKey){ showToast('Groq API 키를 로비에서 입력해주세요','error'); return; }
   let stream;
   try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
   catch(e){ showToast('마이크 접근 실패: '+e.message,'error'); return; }
 
-  audioChunks=[];
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(SR){
+    groqRecognition = new SR();
+    groqRecognition.continuous = true;
+    groqRecognition.interimResults = true;
+    groqRecognition.lang = myLang;
+    groqRecognition.onresult = e => {
+      let interim='';
+      for(let i=e.resultIndex;i<e.results.length;i++) interim+=e.results[i][0].transcript;
+      if(interim.trim()) {
+        document.getElementById('myPanel').innerHTML = `<span class="interim" style="color:#94A3B8;font-style:italic"> ${esc(interim)}</span>`;
+        document.getElementById('panelMine').classList.add('active-mine');
+      }
+    };
+    groqRecognition.onend = () => { if(isRecording) setTimeout(()=>{try{groqRecognition.start();}catch(e){}}, 200); };
+    try{ groqRecognition.start(); } catch(e){}
+  }
+
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new AudioContext();
+  const source = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  source.connect(analyser);
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
   const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
                  : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
                  : 'audio/ogg';
-  mediaRecorder=new MediaRecorder(stream,{mimeType});
-  mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) audioChunks.push(e.data); };
-  mediaRecorder.onstop=async()=>{
-    stream.getTracks().forEach(t=>t.stop());
-    if(!audioChunks.length){ resetRecordBtn(); return; }
-    const blob=new Blob(audioChunks,{type:mimeType});
-    audioChunks=[];
 
-    // show transcribing state
-    document.getElementById('recordBtn').className='rec-btn idle';
-    document.getElementById('recordBtn').textContent='⏳';
-    document.getElementById('statusText').innerHTML='<span class="spinner"></span> Groq 음성인식 중…';
-    document.getElementById('statusSub').textContent='잠시 기다려주세요';
+  let isSpeakingHasOccurred = false;
+  let silenceStart = 0;
+  const SILENCE_THRESHOLD = 5; 
+  const SILENCE_DURATION = 1500; 
 
-    try{
-      const text=await transcribeGroq(blob);
-      if(!text.trim()){ resetRecordBtn(); showToast('음성이 감지되지 않았습니다'); return; }
-      document.getElementById('myPanel').innerHTML=`<span class="final">${esc(text)}</span>`;
-      const translated=await translateText(text,myLang,theirLang);
-      document.getElementById('theirPanel').innerHTML=`<span class="final">${esc(translated)}</span>`;
-      document.getElementById('panelTheirs').classList.add('active-them');
-      if(mode==='p2p') sendToPeer({type:'final',original:text,translated,origLang:myLang,transLang:theirLang,ts:Date.now(),source:'speech'});
-      transcripts.push({id:Date.now(),speaker:'me',original:text,origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'speech'});
-      renderMinutes();
-    }catch(e){ showToast('Groq 오류: '+e.message,'error'); }
-    resetRecordBtn();
-    if(mode==='p2p') sendToPeer({type:'speaking',active:false});
-  };
+  function createRecorder() {
+    if(!isRecording) return;
+    mediaRecorder = new MediaRecorder(stream, {mimeType});
+    let chunks = [];
+    mediaRecorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunks, {type:mimeType});
+      if(isSpeakingHasOccurred) processGroqChunk(blob);
+      if(isRecording) createRecorder();
+    };
+    mediaRecorder.start();
+    isSpeakingHasOccurred = false;
+  }
 
-  mediaRecorder.start();
-  isRecording=true;
+  isRecording = true;
   document.getElementById('recordBtn').className='rec-btn recording';
   document.getElementById('recordBtn').textContent='⏹️';
-  document.getElementById('statusText').innerHTML='<span class="rec-dot"></span> 녹음 중… (Groq)';
-  document.getElementById('statusSub').textContent='말씀하세요 → 버튼을 다시 누르면 전송됩니다';
+  document.getElementById('statusText').innerHTML='<span class="rec-dot"></span> 자동 녹음 중… (Groq)';
+  document.getElementById('statusSub').textContent='말씀을 멈추면 자동으로 번역됩니다';
   document.getElementById('panelMine').classList.add('active-mine');
   if(mode==='p2p') sendToPeer({type:'speaking',active:true});
-  showToast('🎙️ Groq 녹음 시작','success');
+  showToast('🎙️ 연속 녹음 시작 (침묵 시 자동 전송)','success');
+
+  vadInterval = setInterval(() => {
+    if(!isRecording) return;
+    analyser.getByteFrequencyData(dataArray);
+    let sum = 0;
+    for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
+    const avg = sum / dataArray.length;
+
+    if(avg > SILENCE_THRESHOLD) {
+      isSpeakingHasOccurred = true;
+      silenceStart = 0;
+    } else {
+      if(isSpeakingHasOccurred) {
+        if(silenceStart === 0) silenceStart = Date.now();
+        else if(Date.now() - silenceStart > SILENCE_DURATION) {
+          silenceStart = 0;
+          isSpeakingHasOccurred = false;
+          if(mediaRecorder.state === 'recording') mediaRecorder.stop();
+        }
+      }
+    }
+  }, 100);
+
+  createRecorder();
 }
 
 function stopGroqRecording(){
-  isRecording=false;
+  isRecording = false;
+  if(vadInterval) clearInterval(vadInterval);
+  if(audioCtx) audioCtx.close();
+  if(groqRecognition){ try{groqRecognition.stop();}catch(e){} groqRecognition=null; }
   document.getElementById('panelMine').classList.remove('active-mine');
-  if(mediaRecorder&&mediaRecorder.state!=='inactive') mediaRecorder.stop();
+  if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+    const stream = mediaRecorder.stream;
+    mediaRecorder.stop();
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+  } else if (mediaRecorder && mediaRecorder.stream) {
+    mediaRecorder.stream.getTracks().forEach(t=>t.stop());
+  }
+  resetRecordBtn();
+  if(mode==='p2p') sendToPeer({type:'speaking',active:false});
+}
+
+async function processGroqChunk(blob) {
+  try{
+    const text=await transcribeGroq(blob);
+    if(!text.trim()) return;
+    document.getElementById('myPanel').innerHTML=`<span class="final">${esc(text)}</span>`;
+    const translated=await translateText(text,myLang,theirLang);
+    document.getElementById('theirPanel').innerHTML=`<span class="final">${esc(translated)}</span>`;
+    document.getElementById('panelTheirs').classList.add('active-them');
+    if(mode==='p2p') sendToPeer({type:'final',original:text,translated,origLang:myLang,transLang:theirLang,ts:Date.now(),source:'speech'});
+    transcripts.push({id:Date.now(),speaker:'me',original:text,origLang:myLang,translated,transLang:theirLang,timestamp:new Date(),source:'speech'});
+    renderMinutes();
+  }catch(e){ showToast('Groq 처리 오류: '+e.message,'error'); }
 }
 
 function resetRecordBtn(){
   document.getElementById('recordBtn').className='rec-btn idle';
   document.getElementById('recordBtn').textContent='🎙️';
   document.getElementById('statusText').textContent='녹음 시작';
-  document.getElementById('statusSub').textContent='버튼을 눌러 말하기 시작 → 다시 누르면 Groq로 전송';
+  document.getElementById('statusSub').textContent='버튼을 한 번 누르면 자동으로 통역됩니다';
 }
 
 async function transcribeGroq(blob){
@@ -996,11 +1067,46 @@ async function copyCode(){
 }
 
 /* ═══════ EXPORT ═══════ */
-function exportPDF(){ closeExportMenu(); if(!transcripts.length){showToast('내보낼 내용이 없습니다','error');return;} window.print(); }
+/* ═══════ AI SUMMARY ═══════ */
+async function generateAISummary() {
+  if(!groqApiKey) return "AI 요약을 생성하려면 로비에서 Groq API 키를 입력해야 합니다.";
+  if(!transcripts.length) return "대화 내용이 없습니다.";
+  const text = transcripts.map(t=>`[${fmtT(t.timestamp)}] ${t.speaker==='me'?myName:theirName}: ${t.original} (${t.translated})`).join('\n');
+  const prompt = `다음은 회의의 실시간 통역 대화 기록입니다. 이 대화 내용을 바탕으로 다음 두 가지를 작성해주세요. 한국어로 자연스럽게 작성해야 합니다.\n\n1. 회의 요약 (3~4줄 이내)\n2. 주요 Action Items (향후 할 일/결정사항)\n\n[대화 기록]\n${text}`;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:'POST', headers:{'Authorization':`Bearer ${groqApiKey}`,'Content-Type':'application/json'},
+      body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],temperature:0.5})
+    });
+    const d=await res.json();
+    if(d.error) throw new Error(d.error.message);
+    return d.choices[0].message.content;
+  } catch(e) { return "[AI 요약 생성 실패: "+e.message+"]"; }
+}
 
-function exportDOCX(){
+/* ═══════ EXPORT ═══════ */
+async function exportPDF(){
   closeExportMenu();
   if(!transcripts.length){showToast('내보낼 내용이 없습니다','error');return;}
+  showToast('AI 요약을 생성 중입니다...', 'default');
+  const aiSummary = await generateAISummary();
+  
+  let printDiv = document.getElementById('printSummary');
+  if(!printDiv) {
+    printDiv = document.createElement('div');
+    printDiv.id = 'printSummary';
+    document.querySelector('main').insertBefore(printDiv, document.querySelector('.minutes'));
+  }
+  printDiv.innerHTML = `<h2 style="color:#4F46E5;font-size:16px;margin-top:0;margin-bottom:8px">🤖 AI 회의 요약 및 Action Items</h2><div style="font-size:13px;line-height:1.6;white-space:pre-wrap;color:#1E293B">${esc(aiSummary)}</div>`;
+  
+  setTimeout(()=>window.print(), 100);
+}
+
+async function exportDOCX(){
+  closeExportMenu();
+  if(!transcripts.length){showToast('내보낼 내용이 없습니다','error');return;}
+  showToast('AI 요약을 생성 중입니다...', 'default');
+  const aiSummary = await generateAISummary();
   const now=new Date();
   const rows=transcripts.map(t=>{
     const sl=LANG[t.origLang]||{flag:'',name:t.origLang};
@@ -1025,9 +1131,13 @@ tr:nth-child(even)td{background:#F8FAFC}
 </style></head><body>
 <h1>🎙️ LiveTrans 대화 기록</h1>
 <div class="sub">생성일시: ${now.toLocaleString('ko-KR')} &nbsp;|&nbsp; 참여자: ${esc(myName)}${mode==='p2p'?', '+esc(theirName):''} &nbsp;|&nbsp; 총 ${transcripts.length}개</div>
+<div style="background:#EEF2FF;padding:16px;border-radius:8px;margin-bottom:24px;">
+  <h2 style="color:#4F46E5;font-size:16px;margin-top:0;">🤖 AI 회의 요약 및 Action Items</h2>
+  <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;">${esc(aiSummary)}</div>
+</div>
 <table><tr><th style="width:60px">화자</th><th style="width:80px">시각</th><th>원본</th><th>번역</th></tr>${rows}</table>
 </body></html>`;
-  const blob=new Blob(['﻿'+html],{type:'application/msword;charset=utf-8'});
+  const blob=new Blob(['\ufeff'+html],{type:'application/msword;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=Object.assign(document.createElement('a'),{href:url,download:`LiveTrans_${now.toISOString().slice(0,10)}.doc`});
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
