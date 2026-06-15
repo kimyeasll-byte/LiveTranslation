@@ -285,16 +285,7 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
     <button class="api-pill" id="apiGoogle" onclick="lobbySelectApi('google')">Google Translate</button>
     <button class="api-pill selected" id="apiDeepl" onclick="lobbySelectApi('deepl')">DeepL</button>
   </div>
-  <div id="apiKeyArea" style="display:block">
-    <div id="apiKeyHint" class="field-label" style="margin-bottom:6px">DeepL API 키 (베트남어 VI 미지원)</div>
-    <div class="api-key-row">
-      <input type="password" class="api-key-input" id="apiKeyLobby" placeholder="API 키를 붙여넣으세요" value="464d0c76-92f6-49f0-99cf-e46923488379:fx">
-      <select id="deeplPlanLobby" style="display:none;padding:9px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--bg);outline:none">
-        <option value="free">Free tier</option>
-        <option value="pro">Pro tier</option>
-      </select>
-    </div>
-  </div>
+
 
   <!-- STT Engine -->
   <div class="api-label" style="margin-top:14px">음성인식 (STT) 엔진</div>
@@ -302,10 +293,7 @@ main{max-width:1200px;margin:0 auto;padding:14px;display:flex;flex-direction:col
     <button class="api-pill selected" id="sttBrowser" onclick="lobbySelectStt('browser')">🌐 브라우저 <span style="font-size:11px;font-weight:400">(Chrome)</span></button>
     <button class="api-pill" id="sttGroq" onclick="lobbySelectStt('groq')">⚡ Groq Whisper</button>
   </div>
-  <div id="groqKeyArea" style="display:none;margin-bottom:4px">
-    <input type="password" class="api-key-input" id="groqKeyLobby" value="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" placeholder="Groq API 키 (gsk_…)" style="width:100%;margin-bottom:5px">
-    <div style="font-size:11px;color:var(--muted)">→ <a href="https://console.groq.com/keys" target="_blank" style="color:var(--primary)">console.groq.com</a>에서 무료 발급 · 모델: whisper-large-v3 · Chrome 불필요</div>
-  </div>
+
 
   <!-- Solo panel -->
   <div id="soloPanel">
@@ -483,10 +471,10 @@ let theirName   = '상대';
 let myLang      = 'ko';
 let theirLang   = 'en';
 let provider    = 'deepl';
-let apiKey      = '464d0c76-92f6-49f0-99cf-e46923488379:fx';
-let deeplPlan   = 'free';
+let apiKey      = localStorage.getItem('apiKey') || '464d0c76-92f6-49f0-99cf-e46923488379:fx';
+let deeplPlan   = localStorage.getItem('deeplPlan') || 'free';
 let sttEngine   = 'browser'; // 'browser' | 'groq'
-let groqApiKey  = '';
+let groqApiKey  = localStorage.getItem('groqApiKey') || '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';
 let peer        = null, conn = null, isHost = false;
 let isRecording = false, recognition = null;
 let mediaRecorder = null, audioChunks = [];
@@ -515,38 +503,18 @@ function lobbySelectApi(p) {
   document.getElementById('apiFree').classList.toggle('selected', p==='mymemory');
   document.getElementById('apiGoogle').classList.toggle('selected', p==='google');
   document.getElementById('apiDeepl').classList.toggle('selected', p==='deepl');
-
-  const area = document.getElementById('apiKeyArea');
-  const hint = document.getElementById('apiKeyHint');
-  const dp   = document.getElementById('deeplPlanLobby');
-  if (p==='mymemory') {
-    area.style.display='none'; dp.style.display='none';
-  } else {
-    area.style.display='block';
-    if (p==='google') {
-      hint.textContent='Google Cloud Translation API 키';
-      dp.style.display='none';
-    } else {
-      hint.textContent='DeepL API 키 (베트남어 VI 미지원)';
-      dp.style.display='inline-block';
-    }
-  }
 }
 
 function lobbySelectStt(s) {
   sttEngine = s;
   document.getElementById('sttBrowser').classList.toggle('selected', s==='browser');
   document.getElementById('sttGroq').classList.toggle('selected', s==='groq');
-  document.getElementById('groqKeyArea').style.display = s==='groq' ? 'block' : 'none';
 }
 
 function getLobbyValues() {
   myName     = document.getElementById('myNameInput').value.trim() || '나';
   myLang     = document.getElementById('myLang').value;
   theirLang  = document.getElementById('theirLang').value;
-  apiKey     = document.getElementById('apiKeyLobby').value.trim();
-  deeplPlan  = document.getElementById('deeplPlanLobby').value;
-  groqApiKey = document.getElementById('groqKeyLobby').value.trim();
 }
 
 function startSolo() {
@@ -1147,6 +1115,32 @@ function openAdmin() {
   });
   const sessionList = Object.values(sessions).sort((a,b) => new Date(b.startTime) - new Date(a.startTime));
 
+  const settingsHtml = `
+    <div style="margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#f9fafb;text-align:left;">
+      <div style="font-weight:600;font-size:13px;margin-bottom:10px;color:var(--primary)">🔑 API 키 설정 (현재 기기 저장)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--muted);font-weight:bold">번역 API 키 (DeepL/Google)</label>
+          <input type="text" id="adminTransKey" value="${esc(apiKey)}" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);font-weight:bold">DeepL 요금제</label>
+          <select id="adminDeeplPlan" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+            <option value="free" ${deeplPlan==='free'?'selected':''}>Free tier</option>
+            <option value="pro" ${deeplPlan==='pro'?'selected':''}>Pro tier</option>
+          </select>
+        </div>
+        <div style="grid-column:1 / -1">
+          <label style="font-size:11px;color:var(--muted);font-weight:bold">Groq STT API 키</label>
+          <input type="text" id="adminGroqKey" value="${esc(groqApiKey)}" style="width:100%;padding:6px;margin-top:4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+        </div>
+      </div>
+      <div style="text-align:right;margin-top:10px">
+        <button onclick="saveAdminKeys()" style="padding:6px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer">설정 저장</button>
+      </div>
+    </div>
+  `;
+
   const rows = sessionList.map(s => {
     const d = new Date(s.startTime);
     let title = s.id;
@@ -1164,6 +1158,7 @@ function openAdmin() {
   }).join('');
   
   const html = `
+    ${settingsHtml}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <p style="margin:0;font-weight:600;color:var(--primary)">이 기기에서 진행된 전체 대화 세션 목록입니다.</p>
       <button onclick="downloadAdminCSV()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;box-shadow:var(--sh);">전체 CSV 다운로드</button>
@@ -1177,6 +1172,16 @@ function openAdmin() {
   `;
   openModal('⚙️ 관리자 콘솔', html);
 }
+
+window.saveAdminKeys = function() {
+  apiKey = document.getElementById('adminTransKey').value.trim();
+  deeplPlan = document.getElementById('adminDeeplPlan').value;
+  groqApiKey = document.getElementById('adminGroqKey').value.trim();
+  localStorage.setItem('apiKey', apiKey);
+  localStorage.setItem('deeplPlan', deeplPlan);
+  localStorage.setItem('groqApiKey', groqApiKey);
+  showToast('API 키 설정이 저장되었습니다.');
+};
 
 window.showAdminDetail = function(sid) {
   let hist = [];
