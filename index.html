@@ -621,6 +621,7 @@ function handleRemoteData(data) {
     updateMainSelects();
     updateMainLabels();
     return;
+  }
   if (data.type==='final') {
     // data.translated is in MY language
     document.getElementById('theirPanel').innerHTML = `<span class="final">${esc(data.translated)}</span>`;
@@ -1145,14 +1146,14 @@ function downloadAdminCSV() {
   
   let csv = '\\ufeff시간,화자,원어,번역어,원본,번역\\n';
   hist.forEach(t => {
-    csv += \`"\${new Date(t.timestamp).toLocaleString('ko-KR')}","\${esc(t.speaker==='me'?myName:theirName)}","\${t.origLang}","\${t.transLang}","\${String(t.original).replace(/"/g,'""')}","\${String(t.translated).replace(/"/g,'""')}"\\n\`;
+    csv += `"${new Date(t.timestamp).toLocaleString('ko-KR')}","${esc(t.speaker==='me'?myName:theirName)}","${t.origLang}","${t.transLang}","${String(t.original).replace(/"/g,'""')}","${String(t.translated).replace(/"/g,'""')}"\n`;
   });
   
   const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = \`LiveTrans_History_\${new Date().toISOString().slice(0,10)}.csv\`;
+  a.download = `LiveTrans_History_${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
